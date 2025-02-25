@@ -36,7 +36,7 @@ contry <- function(tsk,attempts, sleep.seconds ,Query) {
 
 
 #Drop HDFS previous data
-# connector.execute(name="HDFS_Prod17", statement="hadoop fs -rm -r /user/hive/warehouse/ca_pricing_data_science_highsecure.db/Weekly_Scorecard/PullForward/PullForward_auto/*")
+# connector.execute(name="HDFS_Prod17", statement="hadoop fs -rm -r /user/hive/warehouse/dbcure.db/Weekly_Scorecard/PullForward/PullForward_auto/*")
 # connector.execute(name="HDFS_Prod17", statement="hadoop fs -rm -r /user/svccaiaproddse/Weekly_Scorecard_backup/PullForward/PullForward_auto/*")
 #contry('drop',10,5,NA)
 
@@ -1092,27 +1092,27 @@ Forecast_length <- 12
 #week_end <- getArgument("week_end","PARAMS")
 #week_end <- as.integer(week_end)
 
-week_end <- paste("select max(wm_yr_wk) from ca_pricing_data_science_highsecure.promox_model_data_national_rollup_mrktng_flyer")
+week_end <- paste("select max(wm_yr_wk) from dbcure.promox_model_data_national_rollup_mrktng_flyer")
 #week_start <- dataset.load(name = 'GCP DD', query = week_start)
 week_end <- contry ('load',10,5,week_end)
 week_end <- as.numeric(week_end)
 
-week_start <- paste("select min(wm_yr_wk) from (select distinct wm_yr_wk from ca_pricing_data_science_highsecure.promox_marketing_wm_calendar where wm_yr_wk<",week_end," order by wm_yr_wk desc limit ",rolling_weeks,") a")
+week_start <- paste("select min(wm_yr_wk) from (select distinct wm_yr_wk from dbcure.promox_marketing_wm_calendar where wm_yr_wk<",week_end," order by wm_yr_wk desc limit ",rolling_weeks,") a")
 #week_start <- dataset.load(name = 'GCP DD', query = week_start)
 week_start <- contry ('load',10,5,week_start)
 week_start <- as.numeric(week_start)
 
-week_forecast_end <- paste("SELECT MAX(WM_YR_WK) FROM (SELECT DISTINCT WM_YR_WK FROM ca_pricing_data_science_highsecure.promox_marketing_wm_calendar WHERE WM_YR_WK > ",week_end," ORDER BY WM_YR_WK ASC LIMIT ",Forecast_length,") a")
+week_forecast_end <- paste("SELECT MAX(WM_YR_WK) FROM (SELECT DISTINCT WM_YR_WK FROM dbcure.promox_marketing_wm_calendar WHERE WM_YR_WK > ",week_end," ORDER BY WM_YR_WK ASC LIMIT ",Forecast_length,") a")
 #week_forecast_end <- dataset.load(name = 'GCP DD', query = week_forecast_end)
 week_forecast_end <- contry('load',10,5,week_forecast_end)
 week_forecast_end <- as.numeric(week_forecast_end)
 
-week_forecast_start <- paste("SELECT MAX(WM_YR_WK) FROM (SELECT DISTINCT WM_YR_WK FROM ca_pricing_data_science_highsecure.promox_marketing_wm_calendar WHERE WM_YR_WK > ",week_end," ORDER BY WM_YR_WK ASC LIMIT 1) a")
+week_forecast_start <- paste("SELECT MAX(WM_YR_WK) FROM (SELECT DISTINCT WM_YR_WK FROM dbcure.promox_marketing_wm_calendar WHERE WM_YR_WK > ",week_end," ORDER BY WM_YR_WK ASC LIMIT 1) a")
 #week_forecast_start <- dataset.load(name = 'GCP DD', query = week_forecast_start)
 week_forecast_start <- contry('load',10,5,week_forecast_start)
 week_forecast_start <- as.numeric(week_forecast_start)
 
-calendar <- paste("SELECT distinct wm_yr_wk, start_date,end_date FROM ca_pricing_data_science_highsecure.promox_marketing_wm_calendar WHERE WM_YR_WK BETWEEN ",week_start," AND ",week_end," ORDER BY WM_YR_WK")
+calendar <- paste("SELECT distinct wm_yr_wk, start_date,end_date FROM dbcure.promox_marketing_wm_calendar WHERE WM_YR_WK BETWEEN ",week_start," AND ",week_end," ORDER BY WM_YR_WK")
 #calendar <- dataset.load(name = 'GCP DD', query = calendar)
 calendar <- contry('load',10,5,calendar)
 names(calendar) <- toupper(names(calendar))
@@ -1131,7 +1131,7 @@ Promos <- c('PA_WEIGHTED_REG', 'AR_WEIGHTED_REG', 'TR_WEIGHTED_REG',
 Cor_values <- c(-0.000001)
 
 #Extracting Base information
-query <- paste("SELECT * FROM ca_pricing_data_science_highsecure.promox_model_data_national_rollup_mrktng_flyer WHERE WM_YR_WK BETWEEN", week_start," AND ", week_end, " AND DEPT_NBR IN (",paste(Depts,collapse=", "),") ORDER BY GROUP_CODE, WM_YR_WK")
+query <- paste("SELECT * FROM dbcure.promox_model_data_national_rollup_mrktng_flyer WHERE WM_YR_WK BETWEEN", week_start," AND ", week_end, " AND DEPT_NBR IN (",paste(Depts,collapse=", "),") ORDER BY GROUP_CODE, WM_YR_WK")
 #Base_data <- dataset.load(name = 'GCP DD', query = query)
 Base_data <- contry('load',10,5,query)
 Base_data <- as.data.table(Base_data)
@@ -1151,7 +1151,7 @@ setkey(Base_data_GC, GROUP_CODE)
 #Forecast data
 
 #GCs on promo from forecast table
-query <- paste("SELECT DISTINCT GROUP_CODE, DEPT_NBR FROM ca_pricing_data_science_highsecure.PROMOX_MODEL_FORECAST_DATA WHERE FLYER_FLAG = 1 AND WM_YR_WK BETWEEN ",week_forecast_start," AND ",week_forecast_end," AND DEPT_NBR IN (",paste(Depts,collapse=", "),")")
+query <- paste("SELECT DISTINCT GROUP_CODE, DEPT_NBR FROM dbcure.PROMOX_MODEL_FORECAST_DATA WHERE FLYER_FLAG = 1 AND WM_YR_WK BETWEEN ",week_forecast_start," AND ",week_forecast_end," AND DEPT_NBR IN (",paste(Depts,collapse=", "),")")
 #Base_forecast_GC <- dataset.load(name = 'GCP DD', query = query)
 Base_forecast_GC <- contry('load',10,5,query)
 Base_forecast_GC <- as.data.table(Base_forecast_GC)
@@ -1376,7 +1376,7 @@ for(x in 1:length(Depts))
   
 }
 
-connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb14778eab8e73b34647570f3a14ab1de74", source_path="/data/GCP/PF_Corr/PF_auto/", target_path="ca_pricing_data_science_highsecure/PF_Corr/PF_auto")
+connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a47570f3a14ab1de74", source_path="/data/GCP/PF_Corr/PF_auto/", target_path="dbcure/PF_Corr/PF_auto")
 
 Time_dp_e = Sys.time()
 
@@ -1389,5 +1389,4 @@ Time_tot = Time_dp_e - Time_tot_s
 
 #Drop and create Hive table with HDFS data
 #connector.execute(name='GCP DD', statement="drop table ca_pricing_data_science_tables.PROMOX_PF_CORR_SCORECARD purge")
-#connector.execute(name='GCP DD', statement="create external table ca_pricing_data_science_tables.PROMOX_PF_CORR_SCORECARD (`FOCUS_GC` string, `CORRELATION_LEVEL` float, `PF_PROMOTIONS` string, `FGC_DEPT_NBR` int, `SCORECARD_WK` int) ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' STORED AS TEXTFILE LOCATION '/user/hive/warehouse/ca_pricing_data_science_highsecure.db/Weekly_Scorecard/PullForward/PullForward_auto/' tblproperties ('skip.header.line.count'='1');")
-
+#connector.execute(name='GCP DD', statement="create external table ca_pricing_data_science_tables.PROMOX_PF_CORR_SCORECARD (`FOCUS_GC` string, `CORRELATION_LEVEL` float, `PF_PROMOTIONS` string, `FGC_DEPT_NBR` int, `SCORECARD_WK` int) ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' STORED AS TEXTFILE LOCATION '/user/hive/warehouse/dbcure.db/Weekly_Scorecard/PullForward/PullForward_auto/' tblproperties ('skip.header.line.count'='1');")
