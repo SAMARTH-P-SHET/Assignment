@@ -1,3 +1,5 @@
+#Time_dp_begin = Sys.time()
+
 ##Data Load 
 for(x in 1:length(Depts))
 {
@@ -650,3 +652,17 @@ for(x in 1:length(Depts))
     }
   }
   
+  
+  
+}
+connector.upload(name="elements_to_gcs_prod", container="b76c14154e0f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Results/", target_path="pricighsecure/Aggregated_Model/Results")
+
+connector.upload(name="elements_to_gcs_prod", container="b76c14154570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Logs/", target_path="pricighsecure/Aggregated_Model/Logs")
+
+connector.upload(name="elements_to_gcs_prod", container="b76c14154ee570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Insights/", target_path="pricighsecure/Aggregated_Model/Insights")
+
+connector.upload(name="elements_to_gcs_prod", container="b76c14154ee570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Halo/", target_path="ca_pricing_data_science_highsecure/Aggregated_Model/Halo")
+
+connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb14778eab8e73b34647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Cann/", target_path="pricighsecure/Aggregated_Model/Cann")
+
+#Time_dp_end = Sys.time()
