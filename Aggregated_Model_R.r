@@ -2616,7 +2616,7 @@ Region_loop = function(GC)
 
 
 #Department Dec.
-#Depts <- "SELECT DISTINCT(DEPT_NBR) FROM ca_pricing_data_science_highsecure.promox_model_data_national_rollup_mrktng_flyer WHERE DEPT_NBR <> 38 AND DEPT_NBR <> 49 AND DEPT_NBR <> 50 ORDER BY DEPT_NBR"
+#Depts <- "SELECT DISTINCT(DEPT_NBR) FROM dbcure.promox_model_data_national_rollup_mrktng_flyer WHERE DEPT_NBR <> 38 AND DEPT_NBR <> 49 AND DEPT_NBR <> 50 ORDER BY DEPT_NBR"
 #Depts <- dataset.load(name = 'GCP DD', query = Depts)
 #names(Depts) <- toupper(names(Depts))
 #Depts <- as.vector(Depts$DEPT_NBR)
@@ -2631,22 +2631,22 @@ week_end <- getArgument("week_end","PARAMS")
 week_end <- as.integer(week_end)
 
 
-week_start <- paste("select min(wm_yr_wk) from (select distinct wm_yr_wk from ca_pricing_data_science_highsecure.promox_marketing_wm_calendar where wm_yr_wk<",week_end," order by wm_yr_wk desc limit ",rolling_weeks,") a")
+week_start <- paste("select min(wm_yr_wk) from (select distinct wm_yr_wk from dbcure.promox_marketing_wm_calendar where wm_yr_wk<",week_end," order by wm_yr_wk desc limit ",rolling_weeks,") a")
 #week_start <- dataset.load(name = 'GCP DD', query = week_start)
 week_start <- contry('load',10,5,week_start)
 week_start <- as.numeric(week_start)
 
-week_forecast_end <- paste("SELECT MAX(WM_YR_WK) FROM (SELECT DISTINCT WM_YR_WK FROM ca_pricing_data_science_highsecure.promox_marketing_wm_calendar WHERE WM_YR_WK > ",week_end," ORDER BY WM_YR_WK ASC LIMIT ",Forecast_length,") a")
+week_forecast_end <- paste("SELECT MAX(WM_YR_WK) FROM (SELECT DISTINCT WM_YR_WK FROM dbcure.promox_marketing_wm_calendar WHERE WM_YR_WK > ",week_end," ORDER BY WM_YR_WK ASC LIMIT ",Forecast_length,") a")
 #week_forecast_end <- dataset.load(name = 'GCP DD', query = week_forecast_end)
 week_forecast_end <- contry('load',10,5,week_forecast_end)
 week_forecast_end <- as.numeric(week_forecast_end)
 
-week_forecast_start <- paste("SELECT MAX(WM_YR_WK) FROM (SELECT DISTINCT WM_YR_WK FROM ca_pricing_data_science_highsecure.promox_marketing_wm_calendar WHERE WM_YR_WK > ",week_end," ORDER BY WM_YR_WK ASC LIMIT 1) a")
+week_forecast_start <- paste("SELECT MAX(WM_YR_WK) FROM (SELECT DISTINCT WM_YR_WK FROM dbcure.promox_marketing_wm_calendar WHERE WM_YR_WK > ",week_end," ORDER BY WM_YR_WK ASC LIMIT 1) a")
 #week_forecast_start <- dataset.load(name = 'GCP DD', query = week_forecast_start)
 week_forecast_start <- contry('load',10,5,week_forecast_start)
 week_forecast_start <- as.numeric(week_forecast_start)
 
-calendar <- paste("SELECT distinct wm_yr_wk, start_date,end_date FROM ca_pricing_data_science_highsecure.promox_marketing_wm_calendar WHERE WM_YR_WK BETWEEN ",week_start," AND ",week_end," ORDER BY WM_YR_WK")
+calendar <- paste("SELECT distinct wm_yr_wk, start_date,end_date FROM dbcure.promox_marketing_wm_calendar WHERE WM_YR_WK BETWEEN ",week_start," AND ",week_end," ORDER BY WM_YR_WK")
 #calendar <- dataset.load(name = 'GCP DD', query = calendar)
 calendar <- contry('load',10,5,calendar)
 names(calendar) <- toupper(names(calendar))
@@ -2664,7 +2664,7 @@ Promos <- c('PA_WEIGHTED_REG', 'AR_WEIGHTED_REG', 'TR_WEIGHTED_REG',
 ##Aggregate data load (all depts)
 
 #Base data ingestion
-query <- paste("SELECT * FROM ca_pricing_data_science_highsecure.promox_model_data_national_rollup_mrktng_flyer WHERE WM_YR_WK BETWEEN", week_start," AND ", week_end, " AND DEPT_NBR IN (",paste(Depts,collapse=", "),") ORDER BY GROUP_CODE, WM_YR_WK")
+query <- paste("SELECT * FROM dbcure.promox_model_data_national_rollup_mrktng_flyer WHERE WM_YR_WK BETWEEN", week_start," AND ", week_end, " AND DEPT_NBR IN (",paste(Depts,collapse=", "),") ORDER BY GROUP_CODE, WM_YR_WK")
 #Base_data <- dataset.load(name = 'GCP DD', query = query)
 Base_data <- contry('load',10,5,query)
 Base_data <- as.data.table(Base_data)
@@ -2686,7 +2686,7 @@ setkey(Base_data_GC, GROUP_CODE)
 
 
 #Base Cannibalization Data
-query <- paste("SELECT * FROM ca_pricing_data_science_highsecure.PROMOX_CANN_ANTIGC_SCORECARD_auto WHERE FGC_DEPT_NBR IN (",paste(shQuote(Depts, type="sh"), collapse=", "),") ORDER BY FOCUS_GC, ANTI_GC ")
+query <- paste("SELECT * FROM dbcure.PROMOX_CANN_ANTIGC_SCORECARD_auto WHERE FGC_DEPT_NBR IN (",paste(shQuote(Depts, type="sh"), collapse=", "),") ORDER BY FOCUS_GC, ANTI_GC ")
 #Base_cann <- dataset.load(name = 'GCP DD', query = query)
 Base_cann <- contry('load',10,5,query)
 Base_cann <- as.data.table(Base_cann)
@@ -2700,7 +2700,7 @@ Base_cann$AGC_DEPT_NBR = as.numeric(Base_cann$AGC_DEPT_NBR)
 setkey(Base_cann, AGC_DEPT_NBR, ANTI_GC)
 
 #Base Halo Basket Data
-query <- paste("SELECT * FROM ca_pricing_data_science_highsecure.PROMOX_HALO_LEVELID_SCORECARD_auto WHERE FOCUS_DEPT_NBR IN (",paste(shQuote(Depts, type="sh"), collapse=", "),")")
+query <- paste("SELECT * FROM dbcure.PROMOX_HALO_LEVELID_SCORECARD_auto WHERE FOCUS_DEPT_NBR IN (",paste(shQuote(Depts, type="sh"), collapse=", "),")")
 #Base_halo <- dataset.load(name = 'GCP DD', query = query)
 Base_halo <- contry('load',10,5,query)
 Base_halo <- as.data.table(Base_halo)
@@ -2714,7 +2714,7 @@ Base_halo$AFFINED_DEPT_NBR = as.numeric(Base_halo$AFFINED_DEPT_NBR)
 setkey(Base_halo, AFFINED_DEPT_NBR, AFFINED_GC)
 
 #Base PF data
-query <- paste("SELECT * FROM ca_pricing_data_science_highsecure.PROMOX_PF_CORR_SCORECARD_auto WHERE FGC_DEPT_NBR IN (",paste(shQuote(Depts, type="sh"), collapse=", "),")")
+query <- paste("SELECT * FROM dbcure.PROMOX_PF_CORR_SCORECARD_auto WHERE FGC_DEPT_NBR IN (",paste(shQuote(Depts, type="sh"), collapse=", "),")")
 #Base_PF <- dataset.load(name = 'GCP DD', query = query)
 Base_PF <- contry('load',10,5,query)
 Base_PF <- as.data.table(Base_PF)
@@ -2728,7 +2728,7 @@ setkey(Base_PF, FGC_DEPT_NBR)
 #Forecast data
 
 #GCs on promo from forecast table
-query <- paste("SELECT DISTINCT GROUP_CODE, DEPT_NBR FROM ca_pricing_data_science_highsecure.PROMOX_MODEL_FORECAST_DATA WHERE FLYER_FLAG = 1 AND WM_YR_WK BETWEEN ",week_forecast_start," AND ",week_forecast_end," AND DEPT_NBR IN (",paste(Depts,collapse=", "),") ")
+query <- paste("SELECT DISTINCT GROUP_CODE, DEPT_NBR FROM dbcure.PROMOX_MODEL_FORECAST_DATA WHERE FLYER_FLAG = 1 AND WM_YR_WK BETWEEN ",week_forecast_start," AND ",week_forecast_end," AND DEPT_NBR IN (",paste(Depts,collapse=", "),") ")
 #Base_forecast_GC <- dataset.load(name = 'GCP DD', query = query)
 Base_forecast_GC <- contry('load',10,5,query)
 Base_forecast_GC <- as.data.table(Base_forecast_GC)
@@ -3397,14 +3397,14 @@ for(x in 1:length(Depts))
   
   
 }
-connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb14778eab8e73b34647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Results/", target_path="ca_pricing_data_science_highsecure/Aggregated_Model/Results")
+connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb1647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Results/", target_path="dbcure/Aggregated_Model/Results")
 
-connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb14778eab8e73b34647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Logs/", target_path="ca_pricing_data_science_highsecure/Aggregated_Model/Logs")
+connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb1647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Logs/", target_path="dbcure/Aggregated_Model/Logs")
 
-connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb14778eab8e73b34647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Insights/", target_path="ca_pricing_data_science_highsecure/Aggregated_Model/Insights")
+connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb1647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Insights/", target_path="dbcure/Aggregated_Model/Insights")
 
-connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb14778eab8e73b34647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Halo/", target_path="ca_pricing_data_science_highsecure/Aggregated_Model/Halo")
+connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb1647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Halo/", target_path="dbcure/Aggregated_Model/Halo")
 
-connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb14778eab8e73b34647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Cann/", target_path="ca_pricing_data_science_highsecure/Aggregated_Model/Cann")
+connector.upload(name="elements_to_gcs_prod", container="b76c14154ee4d5d351c531a0afacb1647570f3a14ab1de74", source_path="/data/GCP/Aggregated_Model/Cann/", target_path="dbcure/Aggregated_Model/Cann")
 
 #Time_dp_end = Sys.time()
