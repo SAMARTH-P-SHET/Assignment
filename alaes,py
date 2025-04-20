@@ -1,0 +1,514 @@
+
+None selected
+
+Skip to content
+Using Gmail with screen readers
+
+Conversations
+me
+(no subject)
+ 
+Attachment:
+new 32.txt
+credit_cards
+2
+Transaction alert for your ICICI Bank Credit Card
+ - Dear Customer, Your ICICI Bank Credit Card XX2009 has been used for a transaction of INR 1481.00 on Apr 20, 2025 at 06:40:11. Info: FLIPKART PAYMENTS. The Available Credit Limit on your card is INR
+ 
+11:17 PM
+Flipkart
+2
+Your Order for MOTUL 7100 4T10W-40Est... has been successfully placed
+ - Flipkart.com Order Placed Hi Samarth 3557, Your order has been successfully placed. Order placed on Apr 20, 2025 Order ID OD334200987583974100 We are committed to serving you with utmost regard for
+ 
+11:17 PM
+Flipkart.com
+MOTUL 7100 4T10W-40Est... from your order have been cancelled
+ - Flipkart.com Items Cancelled Hi Samarth 3557, Your order OD334200987583974100 for the below listed items has been cancelled . The amount you have paid for the cancelled items will be refunded within 4
+ 
+11:16 PM
+Flipkart
+2
+Refund update for your order - MOTUL 7100 4T10W-40Est...
+ - Flipkart.com Refund Processed Hi Samarth 3557, Order ID OD334200987583974100 Amount on hold from your credit card is being released The amount on hold from your credit card for this order is being
+ 
+11:16 PM
+me
+(no subject)
+ 
+Attachment:
+new 6.txt
+10:42 PM
+12.72 GB of 15 GB (84%) used
+Terms · Privacy · Program Policies
+Last account activity: 0 minutes ago
+Open in 1 other location · Details
+# Import necessary libraries
+import subprocess
+import sys
+
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, LongType
+from pyspark.sql.functions import col
+
+
+# List of packages to install
+packages = ['pandas', 'numpy','google-cloud-storage']
+for package in packages:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+import pandas as pd
+import numpy as np
+import warnings
+from collections import defaultdict
+import math # Import math for isnan check
+from pyspark.sql.functions import countDistinct
+from pyspark.sql.utils import AnalysisException
+import traceback
+
+warnings.filterwarnings("ignore") # Suppress warnings for cleaner output
+
+# --- Constants ---
+print("\nLet's define few constants:")
+PRICE_SMOOTHING_THRESHOLD = 0.05 # 5% threshold for considering prices the same
+PRICE_SPIKE_THRESHOLD = 0.50 # 50% threshold for imputing large spikes
+IQR_MULTIPLIER = 1.5 # For outlier detection
+MIN_WEEKS_FOR_BLOCK = 1 # Minimum weeks needed to consider a block valid
+ROUNDING_DECIMALS = 2
+EPSILON = 1e-9 # Small constant to avoid log(0) or division by zero
+print("\nConstant values are defined, going forward with execution")
+
+# --- Helper Functions ---
+print("\nExecuting safe_log...")
+def safe_log(numerator, denominator):
+    """Calculates log(numerator / denominator) safely."""
+    num = max(float(numerator), EPSILON)
+    den = max(float(denominator), EPSILON)
+
+    if den == 0 or math.isnan(num) or math.isnan(den):
+        print("safe_log result: NaN (zero denominator or NaN input)")
+        return np.nan
+
+    ratio = num / den
+    if ratio <= 0:
+        print(f"safe_log result: NaN (non-positive ratio: {ratio})")
+        return np.nan
+
+    result = np.log(ratio)
+    print(f"safe_log result: {result}")
+    return result
+  
+print("\nExecuting the IQR Bounds...")    
+def calculate_iqr_bounds(series):
+    """Calculates IQR bounds for a pandas Series, handling small samples."""
+    if series.empty or series.isnull().all():
+        return -np.inf, np.inf
+
+    non_null_count = series.dropna().count()
+    if non_null_count < 4: # Need at least 4 points for robust IQR
+         min_val, max_val = series.min(), series.max()
+         return min_val - EPSILON, max_val + EPSILON # Use min/max if too few points
+
+    q1 = series.quantile(0.25)
+    q3 = series.quantile(0.75)
+    iqr = q3 - q1
+
+    # Handle cases where IQR is zero (all values in the middle are the same)
+    if iqr == 0:
+        # Use a small buffer around the median or mean in this case
+        median_val = series.median()
+        return median_val - EPSILON, median_val + EPSILON
+
+    lower_bound = q1 - IQR_MULTIPLIER * iqr
+    upper_bound = q3 + IQR_MULTIPLIER * iqr
+    return lower_bound, upper_bound
+    
+    
+print("\nExecuting the Block Stats...")   
+def calculate_block_stats(df_block):
+    """Calculates average units and price for a block after IQR outlier removal."""
+    print("\n--- Entering calculate_block_stats ---")
+    if df_block.empty:
+        print("DEBUG: calculate_block_stats - Input df_block is empty. Returning NaNs and 0 counts.")
+        return np.nan, np.nan, 0, 0 # Added original count
+
+    original_count = len(df_block)
+    print(f"DEBUG: calculate_block_stats - Original block size: {original_count} weeks")
+    units_series = df_block['TOTAL_UNITS'].astype(float) # Ensure float for quantile
+    print("DEBUG: calculate_block_stats - Calculating IQR bounds for 'TOTAL_UNITS'")
+
+    # Remove unit outliers using IQR
+    lower_bound, upper_bound = calculate_iqr_bounds(units_series)
+    print(f"DEBUG: calculate_block_stats - IQR Bounds for TOTAL_UNITS: Lower={lower_bound}, Upper={upper_bound}")
+
+    # Be careful with bounds that might become infinite
+    lower_bound = lower_bound if np.isfinite(lower_bound) else -np.inf
+    upper_bound = upper_bound if np.isfinite(upper_bound) else np.inf
+    print(f"DEBUG: calculate_block_stats - Adjusted IQR Bounds: Lower={lower_bound}, Upper={upper_bound}")
+
+
+    print("DEBUG: calculate_block_stats - Filtering block based on unit bounds...")
+    df_filtered = df_block[(units_series >= lower_bound) & (units_series <= upper_bound)].copy()
+    num_weeks_after_filter = len(df_filtered)
+    print(f"DEBUG: calculate_block_stats - Block size after filtering: {num_weeks_after_filter} weeks")
+
+    if df_filtered.empty:
+        # If filtering removed everything, return NaN but report original count
+        print("DEBUG: calculate_block_stats - Filtered DataFrame is empty. Returning NaNs, 0 filtered count, original count.")
+        return np.nan, np.nan, 0, original_count
+
+    print("DEBUG: calculate_block_stats - Calculating mean units and price on filtered data...")
+    avg_units = df_filtered['TOTAL_UNITS'].mean()
+    # Use RETAIL_AMT for price calculation as it's imputed earlier
+    avg_price = df_filtered['RETAIL_AMT'].mean()
+    print(f"DEBUG: calculate_block_stats - Calculated Avg Units: {avg_units}, Avg Price: {avg_price}")
+
+
+    # Ensure results are not NaN/inf if possible
+    avg_units = avg_units if pd.notna(avg_units) and np.isfinite(avg_units) else np.nan
+    avg_price = avg_price if pd.notna(avg_price) and np.isfinite(avg_price) else np.nan
+    print(f"DEBUG: calculate_block_stats - Final Avg Units: {avg_units}, Avg Price: {avg_price}")
+    print("--- Exiting calculate_block_stats ---")
+
+
+    return avg_units, avg_price, num_weeks_after_filter, original_count
+print("\nExecuting the Elasticities Calculation...") 
+
+
+def calculate_elasticities_formulas(df_group):
+    """
+    Calculates elasticities and multipliers for a single UPC/Store group
+    using the formula-based approach, adapted for PySpark.
+    """
+
+    group_results = defaultdict(list)
+    processed_blocks = [] # To store details of consecutive blocks 
+
+    # 1. Pre-process: Impute RETAIL_AMT and identify promo type
+    df_group = df_group.withColumn(
+        "RETAIL_AMT",
+        F.when(F.col("RETAIL_AMT").isNull(), F.col("REG_RETAIL_AMT")).otherwise(F.col("RETAIL_AMT"))
+    )
+    df_group = df_group.withColumn(
+        "RETAIL_AMT",
+        F.when(F.col("INSTORE_PROMO") == 0, F.col("REG_RETAIL_AMT")).otherwise(F.col("RETAIL_AMT"))
+    )
+    # Ensure prices are numeric
+    df_group = df_group.withColumn("RETAIL_AMT", F.col("RETAIL_AMT").cast("double"))
+    df_group = df_group.withColumn("REG_RETAIL_AMT", F.col("REG_RETAIL_AMT").cast("double"))
+    df_group = df_group.dropna(subset=["RETAIL_AMT", "REG_RETAIL_AMT"])
+
+    # Identify promo type
+    df_group = df_group.withColumn(
+        "Promo_Type",
+        F.when(F.col("INSTORE_PROMO") == 0, F.lit("No_Promo"))
+        .when((F.col("INSTORE_PROMO") == 1) & (F.col("FLYER") == 0) & (F.col("CPP") == 0), F.lit("Instore_Only"))
+        .when((F.col("INSTORE_PROMO") == 1) & (F.col("FLYER") == 1) & (F.col("CPP") == 0), F.lit("Instore_Flyer"))
+        .when((F.col("INSTORE_PROMO") == 1) & (F.col("FLYER") == 0) & (F.col("CPP") == 1), F.lit("Instore_CPP"))
+        .when((F.col("INSTORE_PROMO") == 1) & (F.col("FLYER") == 1) & (F.col("CPP") == 1), F.lit("Instore_Flyer_CPP"))
+        .otherwise(F.lit("Other_Promo"))
+    )
+
+    # 2. Identify Consecutive Blocks (Refined)
+    w = Window.orderBy("WM_YR_WK")
+    df_group = df_group.withColumn("prev_Promo_Type", F.lag("Promo_Type").over(w))
+    df_group = df_group.withColumn("prev_REG_RETAIL_AMT", F.lag("REG_RETAIL_AMT").over(w))
+    block_change = (
+        (F.col("Promo_Type") != F.col("prev_Promo_Type")) |
+        ((F.col("Promo_Type") == "No_Promo") & (F.col("REG_RETAIL_AMT") != F.col("prev_REG_RETAIL_AMT")))
+    )
+    df_group = df_group.withColumn("block_change_int", block_change.cast("integer"))
+    df_group = df_group.withColumn("Block_ID", F.sum("block_change_int").over(Window.orderBy("WM_YR_WK").rowsBetween(Window.unboundedPreceding, 0)))
+    df_group = df_group.drop("prev_Promo_Type", "prev_REG_RETAIL_AMT", "block_change_int")
+
+    # At this point, df_group is ready for blockwise analysis. In PySpark, we collect blockwise for further calculation.
+    block_ids = [row.Block_ID for row in df_group.select("Block_ID").distinct().collect()]
+    block_data_for_calc = {}
+
+    current_reg_price = None
+
+    for block_id in sorted(block_ids):
+        block_df = df_group.filter(F.col("Block_ID") == block_id)
+        if block_df.count() == 0:
+            continue
+
+        block_promo_type = block_df.select("Promo_Type").first()["Promo_Type"]
+        start_wk = block_df.agg(F.min("WM_YR_WK")).first()[0]
+        end_wk = block_df.agg(F.max("WM_YR_WK")).first()[0]
+        block_reg_price = block_df.approxQuantile("REG_RETAIL_AMT", [0.5], 0.01)[0] # median
+
+        # Handle Regular Price Smoothing and Spike Imputation (only for No_Promo blocks)
+        if block_promo_type == "No_Promo":
+            if current_reg_price is not None and block_reg_price is not None and current_reg_price > EPSILON:
+                price_diff_ratio = abs(block_reg_price - current_reg_price) / current_reg_price
+                # Check for spike > 50%
+                if price_diff_ratio > PRICE_SPIKE_THRESHOLD:
+                    # Impute
+                    print(f"    Imputing spike: Block {block_id} ({start_wk}-{end_wk}), RegPrice {block_reg_price:.2f} changed to {current_reg_price:.2f}")
+                    block_df = block_df.withColumn("REG_RETAIL_AMT", F.lit(current_reg_price))
+                    block_df = block_df.withColumn("RETAIL_AMT", F.lit(current_reg_price))
+                    block_reg_price = current_reg_price
+                # Smoothing <= 5%
+                elif price_diff_ratio <= PRICE_SMOOTHING_THRESHOLD:
+                    print(f"    Smoothing price: Block {block_id} ({start_wk}-{end_wk}), RegPrice treated as {current_reg_price:.2f}")
+                    block_reg_price = current_reg_price
+
+            if block_reg_price is not None:
+                current_reg_price = block_reg_price
+
+        # Calculate stats after potential imputation/smoothing
+        avg_units, avg_price, num_weeks_filtered, original_weeks = calculate_block_stats(block_df)
+
+        block_data_for_calc[block_id] = {
+            'block_id': block_id,
+            'promo_type': block_promo_type,
+            'start_wk': start_wk,
+            'end_wk': end_wk,
+            'reg_price_processed': block_reg_price,
+            'avg_price_filtered': avg_price,
+            'avg_units_filtered': avg_units,
+            'num_weeks_filtered': num_weeks_filtered,
+            'original_weeks': original_weeks
+        }
+
+    processed_blocks = [block_data_for_calc[bid] for bid in sorted(block_data_for_calc.keys())]
+
+    # --- Calculations using Processed Blocks ---
+    # 3. Calculate Regular Price Elasticity (E_reg)
+    e_reg_results = []
+    for i in range(1, len(processed_blocks)):
+        old_block = processed_blocks[i-1]
+        new_block = processed_blocks[i]
+        if new_block['promo_type'] == 'No_Promo' and old_block['promo_type'] == 'No_Promo' and \
+           old_block['reg_price_processed'] is not None and new_block['reg_price_processed'] is not None and \
+           abs(new_block['reg_price_processed'] - old_block['reg_price_processed']) > EPSILON:
+            if old_block['num_weeks_filtered'] >= MIN_WEEKS_FOR_BLOCK and new_block['num_weeks_filtered'] >= MIN_WEEKS_FOR_BLOCK and \
+               old_block['avg_units_filtered'] is not None and new_block['avg_units_filtered'] is not None:
+
+                log_price_change = safe_log(new_block['reg_price_processed'], old_block['reg_price_processed'])
+                log_unit_change = safe_log(new_block['avg_units_filtered'], old_block['avg_units_filtered'])
+
+                if log_price_change is not None and log_unit_change is not None and abs(log_price_change) > EPSILON:
+                    e_reg = log_unit_change / log_price_change
+                    if e_reg < 0:
+                        e_reg_results.append({
+                            'value': round(e_reg, ROUNDING_DECIMALS),
+                            'weeks': old_block['original_weeks'] + new_block['original_weeks'],
+                            'details': f"From P={old_block['reg_price_processed']:.2f}({old_block['original_weeks']}w)@U={old_block['avg_units_filtered']:.2f} "
+                                       f"To P={new_block['reg_price_processed']:.2f}({new_block['original_weeks']}w)@U={new_block['avg_units_filtered']:.2f}"
+                        })
+                    else:
+                        print(f"    Skipping E_regular calc between block {old_block['block_id']} and {new_block['block_id']}: Positive elasticity ({e_reg:.2f})")
+
+    group_results['E_regular'] = e_reg_results
+
+    # 4. Calculate Promo Elasticity (E_promo)
+    e_promo_results = []
+    promo_elasticity_map = {}
+    for i in range(len(processed_blocks)):
+        current_block = processed_blocks[i]
+        if current_block['promo_type'] == 'Instore_Only':
+            last_reg_block = None
+            for j in range(i - 1, -1, -1):
+                if processed_blocks[j]['promo_type'] == 'No_Promo':
+                    last_reg_block = processed_blocks[j]
+                    break
+            if last_reg_block and \
+               current_block['num_weeks_filtered'] >= MIN_WEEKS_FOR_BLOCK and last_reg_block['num_weeks_filtered'] >= MIN_WEEKS_FOR_BLOCK and \
+               current_block['avg_units_filtered'] is not None and last_reg_block['avg_units_filtered'] is not None and \
+               current_block['avg_price_filtered'] is not None and last_reg_block['reg_price_processed'] is not None:
+                log_price_change = safe_log(current_block['avg_price_filtered'], last_reg_block['reg_price_processed'])
+                log_unit_change = safe_log(current_block['avg_units_filtered'], last_reg_block['avg_units_filtered'])
+                if log_price_change is not None and log_unit_change is not None and abs(log_price_change) > EPSILON:
+                    e_promo = log_unit_change / log_price_change
+                    if e_promo < 0:
+                        e_promo_results.append({
+                            'value': round(e_promo, ROUNDING_DECIMALS),
+                            'weeks': current_block['original_weeks'] + last_reg_block['original_weeks'],
+                            'details': f"Promo P={current_block['avg_price_filtered']:.2f}({current_block['original_weeks']}w)@U={current_block['avg_units_filtered']:.2f} "
+                                       f"vs Base P={last_reg_block['reg_price_processed']:.2f}({last_reg_block['original_weeks']}w)@U={last_reg_block['avg_units_filtered']:.2f}"
+                        })
+                        promo_elasticity_map[last_reg_block['block_id']] = e_promo
+                        print(f"    Calculated E_promo: {e_promo:.4f} (using base block {last_reg_block['block_id']})")
+                    else:
+                        print(f"    Skipping E_promo calc for block {current_block['block_id']}: Positive elasticity ({e_promo:.2f})")
+                else:
+                    print(f"    Skipping E_promo calc for block {current_block['block_id']}: Invalid log change calc (price or unit)")
+            else:
+                print(f"    Skipping E_promo calc for block {current_block['block_id']}: No valid preceding No_Promo block or stats.")
+
+
+    group_results['E_promo'] = e_promo_results
+
+    # 5. Calculate Multipliers (M)
+    multiplier_results = defaultdict(list)
+    multiplier_map = {
+        "Instore_Flyer": "M_instore_flyer",
+        "Instore_CPP": "M_instore_cpp",
+        "Instore_Flyer_CPP": "M_instore_flyer_cpp"
+    }
+    for i in range(len(processed_blocks)):
+        current_block = processed_blocks[i]
+        if current_block['promo_type'] in multiplier_map:
+            promo_key = multiplier_map[current_block['promo_type']]
+            last_reg_block = None
+            for j in range(i - 1, -1, -1):
+                if processed_blocks[j]['promo_type'] == 'No_Promo':
+                    last_reg_block = processed_blocks[j]
+                    break
+            if last_reg_block and last_reg_block['block_id'] in promo_elasticity_map:
+                e_promo_ref = promo_elasticity_map[last_reg_block['block_id']]
+                if current_block['num_weeks_filtered'] >= MIN_WEEKS_FOR_BLOCK and last_reg_block['num_weeks_filtered'] >= MIN_WEEKS_FOR_BLOCK and \
+                   current_block['avg_units_filtered'] is not None and last_reg_block['avg_units_filtered'] is not None and \
+                   current_block['avg_price_filtered'] is not None and last_reg_block['reg_price_processed'] is not None and \
+                   e_promo_ref is not None:
+                    lift = max(current_block['avg_units_filtered'], EPSILON) / max(last_reg_block['avg_units_filtered'], EPSILON)
+                    price_ratio = max(current_block['avg_price_filtered'], EPSILON) / max(last_reg_block['reg_price_processed'], EPSILON)
+                    if price_ratio > 0 and lift is not None:
+                        try:
+                            denominator = price_ratio ** e_promo_ref
+                            if abs(denominator) > EPSILON:
+                                raw_multiplier = lift / denominator
+                                final_multiplier = max(1.0, raw_multiplier)
+                                multiplier_results[promo_key].append({
+                                    'value': round(final_multiplier, ROUNDING_DECIMALS),
+                                    'raw_value': round(raw_multiplier, ROUNDING_DECIMALS),
+                                    'weeks': current_block['original_weeks'] + last_reg_block['original_weeks'],
+                                    'details': f"Promo P={current_block['avg_price_filtered']:.2f}({current_block['original_weeks']}w)@U={current_block['avg_units_filtered']:.2f} "
+                                               f"vs Base P={last_reg_block['reg_price_processed']:.2f}({last_reg_block['original_weeks']}w)@U={last_reg_block['avg_units_filtered']:.2f} "
+                                               f"using E_promo={e_promo_ref:.2f}"
+                                })
+                                print(f"    Calculated {promo_key}: Raw={raw_multiplier:.4f}, Final={final_multiplier:.4f} (using base block {last_reg_block['block_id']}, E_promo={e_promo_ref:.2f})")
+                            else:
+                                 print(f"    Skipping multiplier calc for {promo_key} block {current_block['block_id']}: Price ratio ^ E_promo is near zero.")
+                        except (OverflowError, ValueError) as e:
+                             print(f"    Skipping multiplier calc for {promo_key} block {current_block['block_id']} due to calculation error: {e}")
+                    else:
+                         print(f"    Skipping multiplier calc for {promo_key} block {current_block['block_id']}: Invalid lift or price_ratio.")
+            else:
+                 print(f"    Skipping multiplier calc for {promo_key} block {current_block['block_id']}: No preceding No_Promo block or no corresponding E_promo found in map.")
+
+    group_results.update(multiplier_results)
+
+    # Format final output for the group
+    final_formatted_results = {}
+    for key, results_list in group_results.items():
+        if results_list:
+            formatted_list = []
+            for idx, res_dict in enumerate(results_list):
+                label = f"{key}_{idx+1}" if len(results_list) > 1 else key
+                formatted_list.append({label: {'value': res_dict['value'], 'weeks': res_dict['weeks']}})
+            merged_dict = {}
+            for d in formatted_list:
+                merged_dict.update(d)
+            final_formatted_results[key] = merged_dict
+        else:
+            final_formatted_results[key] = {}
+
+    return final_formatted_results
+print("\nElasticities Calculated.") 
+
+
+# Main execution
+if __name__ == "__main__":
+    # Initialize Spark Session
+    spark = SparkSession.builder \
+        .appName("UPC Elasticity Analysis") \
+        .getOrCreate()
+    
+    file_path = 'gs://01f9b3d68098e5580b1d08ab2a4/samarth/001_Price_Elasticity/2_upc_demo.csv'  # Use the provided file path
+
+    try:
+        # Read CSV into Spark DataFrame
+        df_raw = spark.read.csv(file_path, header=True, inferSchema=True)
+        print(f"Loaded data: {df_raw.count()} rows")
+
+        # Basic Cleaning
+        df_raw = df_raw.dropna(subset=['WM_YR_WK', 'UPC_NBR', 'STORE_NBR', 'REG_RETAIL_AMT', 'TOTAL_UNITS'])
+        
+        # Convert columns to numeric and drop any resulting nulls
+        df_raw = df_raw.withColumn('TOTAL_SALES', F.col('TOTAL_SALES').cast('double'))
+        df_raw = df_raw.withColumn('TOTAL_UNITS', F.col('TOTAL_UNITS').cast('double'))
+        df_raw = df_raw.dropna(subset=['TOTAL_SALES', 'TOTAL_UNITS'])
+
+        # Filter out negative units/sales BEFORE grouping
+        df_cleaned = df_raw.filter((F.col('TOTAL_SALES') >= 0) & (F.col('TOTAL_UNITS') >= 0))
+        print(f"Data after initial cleaning (negatives removed): {df_cleaned.count()} rows")
+
+        if df_cleaned.count() == 0:
+            print("No valid data after initial cleaning.")
+        else:
+            # Ensure grouping columns are correct type if needed
+            df_cleaned = df_cleaned.withColumn('UPC_NBR', F.col('UPC_NBR').cast('string'))
+            df_cleaned = df_cleaned.withColumn('STORE_NBR', F.col('STORE_NBR').cast('string'))
+            
+            # Apply the UDF to each group
+            results_df = df_cleaned.groupBy('UPC_NBR', 'STORE_NBR').apply(calculate_elasticities_formulas)
+            
+            # Check if results are empty
+            if results_df.count() == 0:
+                print("No metrics calculated for any group.")
+            else:
+                # Collect results for printing (in real-world apps, you might write to storage instead)
+                results_collected = results_df.collect()
+                
+                print("\n--- Final Calculated Metrics ---")
+                # Create dictionary structure similar to original code to maintain output format
+                all_results = {}
+                for row in results_collected:
+                    key = (row['UPC_NBR'], row['STORE_NBR'])
+                    if key not in all_results:
+                        all_results[key] = {}
+                    
+                    if row['key'] not in all_results[key]:
+                        all_results[key][row['key']] = {
+                            'value': row['value'],
+                            'weeks': row['weeks']
+                        }
+                
+                # Print results in the same format as original
+                for (upc, store), metrics in all_results.items():
+                    print(f"\nUPC: {upc}, Store: {store}")
+                    output_str_parts = []
+                    # Define the order for printing keys based on prefixes
+                    key_prefixes_ordered = ['E_regular', 'E_promo', 'M_instore_flyer', 'M_instore_cpp', 'M_instore_flyer_cpp']
+                    processed_keys = set()
+
+                    for prefix in key_prefixes_ordered:
+                        # Find all keys starting with the prefix
+                        keys_for_prefix = sorted([k for k in metrics if k.startswith(prefix)],
+                                               key=lambda x: int(x.split('_')[-1]) if '_' in x and x.split('_')[-1].isdigit() else 0)
+
+                        if keys_for_prefix:
+                            prefix_results = []
+                            for key in keys_for_prefix:
+                                value = metrics[key]['value']
+                                weeks = metrics[key]['weeks']
+                                prefix_results.append(f"{key}: {value} ({weeks} weeks)")
+                                processed_keys.add(key)
+                            output_str_parts.append(', '.join(prefix_results))
+
+                    # Add any remaining keys not covered by the ordered prefixes
+                    remaining_keys = sorted(list(set(metrics.keys()) - processed_keys))
+                    if remaining_keys:
+                        remaining_results = []
+                        for key in remaining_keys:
+                            value = metrics[key]['value']
+                            weeks = metrics[key]['weeks']
+                            remaining_results.append(f"{key}: {value} ({weeks} weeks)")
+                        output_str_parts.append(', '.join(remaining_results))
+
+                    print('; '.join(part for part in output_str_parts if part))
+
+    except Exception as e:
+        print(f"An unexpected error occurred during execution: {e}")
+        import traceback
+        traceback.print_exc()
+        
+    finally:
+        # Stop Spark session
+        spark.stop()
+new 32.txt
+Displaying new 32.txt.
