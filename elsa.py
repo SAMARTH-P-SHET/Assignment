@@ -393,7 +393,7 @@ if __name__ == "__main__":
         .appName("UPC Elasticity Analysis") \
         .getOrCreate()
     
-    file_path = 'gs://01f9b3d68098e5580b130a147137b1b9667bd0a2598fdf70911038d08ab2a4/samarth/001_Price_Elasticity/elasticitydata.csv'  # Use the provided file path
+    file_path = 'gs://01f9b3d682598fdf70911038d08ab2a4/samarth/001_Price_Elasticity/elasticitydata.csv'  # Use the provided file path
 
     try:
         # Read CSV into Spark DataFrame
